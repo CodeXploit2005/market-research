@@ -9,7 +9,7 @@
  * Tokens are stored in ~/.openai-websearch/auth.json (or OPENAI_WEBSEARCH_AUTH_FILE).
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, chmodSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, chmodSync, renameSync, rmSync } from 'fs';
 import { homedir } from 'os';
 import { join, dirname } from 'path';
 import { createServer } from 'http';
@@ -81,7 +81,6 @@ export function loadAuthFile(path = defaultAuthPath()) {
 }
 
 export function saveAuthFile(tokens, { idToken, accountId, path = defaultAuthPath() } = {}) {
-  const existing = loadAuthFile(path) || {};
   const data = {
     auth_mode: 'chatgpt',
     last_refresh: new Date().toISOString(),
@@ -93,16 +92,22 @@ export function saveAuthFile(tokens, { idToken, accountId, path = defaultAuthPat
     },
   };
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(data, null, 2) + '\n', 'utf-8');
+  const temporary = path + '.' + randomBytes(8).toString('hex') + '.tmp';
+  try {
+    writeFileSync(temporary, JSON.stringify(data, null, 2) + '\n', { encoding: 'utf-8', mode: 0o600 });
+    renameSync(temporary, path);
+  } finally {
+    if (existsSync(temporary)) rmSync(temporary);
+  }
   try { chmodSync(path, 0o600); } catch {}
   return path;
 }
 
 // ─── HTTP helpers ─────────────────────────────────────────────────────────────
 
-async function postForm(url, payload, headers = {}) {
+async function postForm(url, payload, headers = {}, signal) {
   const resp = await fetch(url, {
-    signal: AbortSignal.timeout(30000),
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30000)]) : AbortSignal.timeout(30000),
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -112,15 +117,17 @@ async function postForm(url, payload, headers = {}) {
     body: new URLSearchParams(payload),
   });
   if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(`HTTP ${resp.status} from ${url}: ${text.slice(0, 300)}`);
+    await resp.body?.cancel();
+    const error = new Error(`HTTP ${resp.status} from ${url}`);
+    error.status = resp.status;
+    throw error;
   }
   return resp.json();
 }
 
-async function postJson(url, payload) {
+async function postJson(url, payload, signal) {
   const resp = await fetch(url, {
-    signal: AbortSignal.timeout(30000),
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30000)]) : AbortSignal.timeout(30000),
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -129,8 +136,10 @@ async function postJson(url, payload) {
     body: JSON.stringify(payload),
   });
   if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(`HTTP ${resp.status} from ${url}: ${text.slice(0, 300)}`);
+    await resp.body?.cancel();
+    const error = new Error(`HTTP ${resp.status} from ${url}`);
+    error.status = resp.status;
+    throw error;
   }
   return resp.json();
 }
@@ -250,19 +259,23 @@ export async function authenticateBrowser({ timeoutMs = 5 * 60 * 1000, printUrl 
  * Start a device-code flow. Returns the URL + code to show the user,
  * plus a promise that resolves with tokens once they authorize.
  */
-export async function authenticateDeviceCode({ pollInterval = 5, timeoutMs = 15 * 60 * 1000, printUrl = true } = {}) {
+export async function authenticateDeviceCode({ pollInterval = 5, timeoutMs = 15 * 60 * 1000, printUrl = true, onDeviceCode, signal } = {}) {
   const data = await postJson(`${AUTH_URL}/api/accounts/deviceauth/usercode`, {
     client_id: CLIENT_ID,
-  });
+  }, signal);
 
   const deviceAuthId = data.device_auth_id || data.deviceAuthId;
   const userCode = data.user_code || data.usercode;
-  const interval = Math.max(1, parseInt(data.interval || pollInterval, 10));
+  let interval = Math.min(60, Math.max(1, parseInt(data.interval || pollInterval, 10) || 5));
   const verificationUrl = `${AUTH_URL}/codex/device`;
 
   if (!deviceAuthId || !userCode) {
     throw new Error('Device-code response missing required fields.');
   }
+
+  const duration = Math.min(timeoutMs, Number(data.expires_in) > 0 ? Number(data.expires_in) * 1000 : timeoutMs);
+  const deadline = Date.now() + duration;
+  if (onDeviceCode) await onDeviceCode({ verificationUrl, userCode, expiresAt: new Date(deadline).toISOString() });
 
   if (printUrl) {
     console.log('Open this URL in your browser and enter the code:');
@@ -271,13 +284,13 @@ export async function authenticateDeviceCode({ pollInterval = 5, timeoutMs = 15 
     console.log('Waiting for authorization...');
   }
 
-  const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
+    signal?.throwIfAborted();
     try {
       const poll = await postJson(`${AUTH_URL}/api/accounts/deviceauth/token`, {
         device_auth_id: deviceAuthId,
         user_code: userCode,
-      });
+      }, signal);
       const authCode = poll.authorization_code;
       const codeVerifier = poll.code_verifier;
       if (authCode && codeVerifier) {
@@ -287,16 +300,23 @@ export async function authenticateDeviceCode({ pollInterval = 5, timeoutMs = 15 
           redirect_uri: DEVICE_CALLBACK,
           client_id: CLIENT_ID,
           code_verifier: codeVerifier,
-        });
+        }, {}, signal);
+        if (!tokens.access_token || !tokens.refresh_token) throw new Error('Device authentication returned incomplete credentials.');
         return { tokens, verificationUrl, userCode };
       }
     } catch (e) {
       // 403/404 = not yet authorized, keep polling
-      if (!String(e.message).includes('HTTP 403') && !String(e.message).includes('HTTP 404')) {
+      if (e.status === 429) interval = Math.min(60, interval + 5);
+      else if (!String(e.message).includes('HTTP 403') && !String(e.message).includes('HTTP 404')) {
         throw e;
       }
     }
-    await new Promise(r => setTimeout(r, interval * 1000));
+    await new Promise((resolve, reject) => {
+      const onAbort = () => { clearTimeout(timer); reject(signal.reason || new Error('Cancelled')); };
+      const timer = setTimeout(() => { signal?.removeEventListener('abort', onAbort); resolve(); }, Math.min(interval * 1000, Math.max(0, deadline - Date.now())));
+      signal?.addEventListener('abort', onAbort, { once: true });
+      if (signal?.aborted) onAbort();
+    });
   }
 
   throw new Error('Device authorization timed out.');

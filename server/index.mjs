@@ -7,6 +7,7 @@ import {randomBytes,timingSafeEqual} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {SearchClient} from './search.mjs';
 import {research,imageResearch} from './research.mjs';
+import {DeviceLogin} from './device-login.mjs';
 
 const cloud=process.env.RENDER==='true';
 const publicOrigin=process.env.RENDER_EXTERNAL_URL?new URL(process.env.RENDER_EXTERNAL_URL).origin:null;
@@ -14,6 +15,7 @@ const publicHost=process.env.RENDER_EXTERNAL_HOSTNAME||(publicOrigin?new URL(pub
 const root=resolve(fileURLToPath(new URL('../dist',import.meta.url))),port=Number(process.env.PORT||4318),lan=process.argv.includes('--lan'),host=lan||cloud?'0.0.0.0':'127.0.0.1';
 if(cloud&&!/^[A-Za-z0-9]{12,64}$/.test(process.env.GIASAT_PAIRING_CODE||''))throw new Error('Render cần GIASAT_PAIRING_CODE: 12–64 ký tự chữ và số.');
 const pin=(process.env.GIASAT_PAIRING_CODE||randomBytes(5).toString('hex')).toUpperCase(),sessions=new Map(),jobs=new Map(),attempts=new Map(),client=new SearchClient();let active=0;
+const deviceLogin=new DeviceLogin(client);
 const allowedOrigin=new Set(['https://gia-sat-market-dungtran.blondsky20.chatgpt.site']);
 const ips=Object.values(networkInterfaces()).flat().filter(x=>x.family==='IPv4'&&!x.internal).map(x=>x.address);
 const urls=cloud&&publicOrigin?[publicOrigin]:[`http://localhost:${port}`,...(lan?ips.map(ip=>`http://${ip}:${port}`):[])];
@@ -35,13 +37,25 @@ const server=http.createServer(async(req,res)=>{
    const data=await body(req);if(!safeEqual(String(data.pin||'').toUpperCase(),pin)&&!(loopback&&reqOrigin===expected&&data.local===true))return send(res,401,{error:'Mã ghép nối chưa đúng.'});
    const token=randomBytes(32).toString('hex');sessions.set(token,{id:randomBytes(8).toString('hex'),exp:Date.now()+24*3600000});res.setHeader('Set-Cookie',`giasat=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400${cloud?'; Secure':''}`);return send(res,200,{token});
   }
-  if(path==='/api/health'){return send(res,200,{ok:true,name:'GiáSát Research Engine',version:'2.0.0',...(getSession(req)?await client.status():{})})}
+  if(path==='/api/health'){return send(res,200,{ok:true,name:'GiáSát Research Engine',version:'2.1.0',...(getSession(req)?await client.status():{})})}
   if(path.startsWith('/api/')){
    const session=getSession(req);if(!session)return send(res,401,{error:'Kết nối máy chủ bằng mã ghép nối trước khi nghiên cứu.'});
+   if(path==='/api/auth/status'&&req.method==='GET')return send(res,200,{...await client.status(),cloud,storage:cloud?'render-filesystem':'local',login:deviceLogin.publicState(session.id)});
+   if(path==='/api/auth/device'&&req.method==='POST'){
+    if(active)return send(res,409,{error:'Chờ nghiên cứu đang chạy hoàn tất trước khi đổi tài khoản.'});
+    try{return send(res,200,await deviceLogin.start(session.id))}catch(e){return send(res,e.status||500,{error:e.message})}
+   }
+   const authMatch=path.match(/^\/api\/auth\/device\/([a-f0-9-]{36})$/);
+   if(authMatch){const state=deviceLogin.publicState(session.id,authMatch[1]);if(!state)return send(res,404,{error:'Phiên đăng nhập không còn hoặc thuộc phiên truy cập khác. Hãy tạo mã mới.'});if(req.method==='GET')return send(res,200,state);if(req.method==='DELETE'){deviceLogin.cancel(session.id,authMatch[1]);return send(res,200,{ok:true})}}
+   if(path==='/api/auth/logout'&&req.method==='POST'){
+    if(active)return send(res,409,{error:'Chờ nghiên cứu đang chạy hoàn tất trước khi đăng xuất.'});
+    if(client.provider==='api')return send(res,409,{error:'Máy chủ đang dùng OPENAI_API_KEY, không có phiên ChatGPT để đăng xuất.'});
+    deviceLogin.cancelPending();client.logout();return send(res,200,{ok:true});
+   }
    if(path==='/api/pairing'&&req.method==='GET')return send(res,200,{pin,urls});
    if(path==='/api/research'&&req.method==='POST'){
     if(active>=2)return send(res,429,{error:'Đang có nghiên cứu chạy. Chờ hoàn tất rồi thử lại.'});const data=await body(req);const product=String(data.product||'').trim();if(!product||product.length>120)return send(res,400,{error:'Tên sản phẩm cần từ 1 đến 120 ký tự.'});if(!['month','year'].includes(data.period)||!['Chính chủ','Cấp riêng','Dùng chung','Chưa rõ'].includes(data.account))return send(res,400,{error:'Gói nghiên cứu không hợp lệ.'});
-    const status=await client.status();if(!status.ready)return send(res,503,{error:'Chưa có phiên tìm kiếm trên PC. Chạy node server/login.mjs hoặc cấu hình OPENAI_API_KEY.'});
+    const status=await client.status();if(!status.ready)return send(res,503,{error:'Chưa đăng nhập dịch vụ tìm kiếm. Mở Kết nối → Đăng nhập ChatGPT để tiếp tục.'});
     const id=randomBytes(16).toString('hex'),controller=new AbortController(),job={id,owner:session.id,status:'running',events:[],createdAt:Date.now(),controller};jobs.set(id,job);active++;
     research(client,{product,period:data.period,account:data.account,depth:data.depth==='medium'?'medium':'high'},event=>job.events.push({...event,at:new Date().toISOString()}),controller.signal).then(result=>{job.result=result;job.status='done'}).catch(e=>{job.error=e.message;job.status=controller.signal.aborted?'cancelled':'error'}).finally(()=>active--);return send(res,202,{id});
    }
@@ -57,4 +71,3 @@ const server=http.createServer(async(req,res)=>{
 const cleanup=setInterval(()=>{for(const[id,j]of jobs)if(Date.now()-j.createdAt>3600000){j.controller.abort();jobs.delete(id)}for(const[t,s]of sessions)if(s.exp<Date.now())sessions.delete(t);for(const[ip,a]of attempts)if(Date.now()-a.at>60000)attempts.delete(ip)},60000);cleanup.unref();
 server.listen(port,host,()=>{console.log(`GiáSát đã sẵn sàng: ${urls.join(' · ')}`);console.log(cloud?'Mã ghép nối: dùng giá trị GIASAT_PAIRING_CODE trong Render Environment.':`Mã ghép nối điện thoại: ${pin}`);console.log('Giữ cửa sổ này mở khi dùng công cụ. Ctrl+C để dừng.');if(process.argv.includes('--open')&&process.platform==='win32')spawn('rundll32',['url.dll,FileProtocolHandler',urls[0]],{windowsHide:true,stdio:'ignore'}).unref()});
 server.on('error',e=>{console.error(e.code==='EADDRINUSE'?`Cổng ${port} đang được sử dụng. Mở http://localhost:${port} hoặc đổi PORT.`:e.message);process.exitCode=1});
-

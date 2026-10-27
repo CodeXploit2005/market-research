@@ -116,9 +116,38 @@ Bản này tự nhận môi trường Render: bind `0.0.0.0:$PORT`, chấp nhậ
 - Start Command: `npm start`.
 - Health Check Path: `/api/health`.
 - `GIASAT_PAIRING_CODE`: tự đặt 12–64 ký tự chữ/số, giữ riêng, dùng để mở quyền tìm kiếm. Không đưa vào Git. Mã này không phân biệt hoa/thường.
-- `OPENAI_API_KEY`: API key của tài khoản OpenAI Platform để bật tìm kiếm trên cloud. Bản Render không tự đọc được phiên đăng nhập trên PC.
-- `OPENAI_WEBSEARCH_MODEL`: `gpt-5-mini` khi dùng API key (cũng là mặc định cho API).
+- `OPENAI_API_KEY`: không cần khi đăng nhập ChatGPT bằng mã thiết bị. Chỉ thêm nếu chủ động chọn dùng OpenAI API riêng. Nếu đã đặt biến này, xóa nó rồi deploy lại để nút đăng nhập ChatGPT được bật.
+- `OPENAI_WEBSEARCH_MODEL`: `gpt-5.6-luna` cho đường ChatGPT/Codex của repo gốc (mặc định). Chỉ dùng `gpt-5-mini` nếu chọn API key. Khả năng sử dụng phụ thuộc model/tài khoản hiện có.
 - `NODE_VERSION`: có thể pin `24.14.1`, là bản Node đã kiểm thử cục bộ.
 - `PORT`, `RENDER`, `RENDER_EXTERNAL_URL`, `RENDER_EXTERNAL_HOSTNAME`: Render tự cung cấp; không cần nhập tay.
 
 Sau khi deploy, mở URL Render, bấm Kết nối. Địa chỉ máy chủ là chính URL Render; mã ghép nối là giá trị GIASAT_PAIRING_CODE đã đặt. Không nhập API key trong giao diện. Bản Free phù hợp thử nghiệm; có thể ngủ khi không dùng và mất các job/phiên trong RAM khi restart. Báo cáo lưu trên trình duyệt vẫn còn. Dịch vụ OpenAI API có chi phí riêng dù hosting Render là Free.
+
+
+### Đăng nhập ChatGPT ngay trên Render — không cần API key
+
+ENV để bắt đầu (giữ mã truy cập của riêng bạn, không đưa giá trị thật lên Git):
+
+```env
+NODE_VERSION=24.14.1
+GIASAT_PAIRING_CODE=<12-64-chu-khong-dau-va-so>
+OPENAI_WEBSEARCH_MODEL=gpt-5.6-luna
+```
+
+1. Deploy commit mới. Không đặt `OPENAI_API_KEY` nếu dùng cách này.
+2. Mở URL Render, bấm Kết nối. Bước 1: địa chỉ là chính URL Render, mã truy cập là GIASAT_PAIRING_CODE trong Environment.
+3. Bước 2: bấm **Đăng nhập bằng tài khoản ChatGPT**. Máy chủ tạo mã thiết bị và trình duyệt hiển thị mã cùng nút mở `https://auth.openai.com/codex/device`.
+4. Bạn tự đăng nhập và xác nhận mã trên trang OpenAI. Không nhập mật khẩu vào GiáSát và không gửi mã cho người khác. Có thể phải bật Device code login trong Settings → Security của ChatGPT; workspace có thể cần quản trị viên cho phép.
+5. Quay lại GiáSát. Trạng thái chuyển sang đã có phiên; bấm Xong rồi nghiên cứu. Nếu chưa được, mã hết hạn hoặc OpenAI từ chối, giao diện báo cụ thể và cho tạo lại. Có nút Hủy khi đang chờ.
+
+Đây là luồng device code của repo gốc được đưa lên giao diện, không phải đăng ký ứng dụng Sign in with ChatGPT mới. Khả năng đăng nhập/tìm kiếm còn phụ thuộc tài khoản, chính sách workspace và khả năng truy cập dịch vụ từ môi trường Render. Không suy ra hỗ trợ cloud chỉ từ kết quả test mock.
+
+Phiên dùng chung cho máy chủ này: người biết mã truy cập GiáSát có thể dùng hạn mức tài khoản đã đăng nhập. Không dùng cấu hình một mã truy cập chung này làm nền tảng đăng nhập nhiều khách hàng độc lập.
+
+Mặc định trên Render, token lưu ngoài thư mục public ở `.local/chatgpt-auth.json`, không nằm trong Git, không trả về frontend. Ghi file nguyên tử, có cache/làm mới token. Render Free không có ổ đĩa bền vững: sau ngủ/restart/deploy có thể phải nhập mã để kết nối và đăng nhập ChatGPT lại. Báo cáo lưu trên trình duyệt không bị xóa bởi việc máy chủ restart. Nếu dùng Render có persistent disk, có thể đặt `OPENAI_WEBSEARCH_AUTH_FILE=/var/data/giasat/chatgpt-auth.json` sau khi gắn disk đúng mount path; không đặt đường dẫn này trên Free khi chưa có disk.
+
+Nút Đăng xuất chỉ xóa file phiên mà GiáSát quản lý, không thu hồi mọi phiên tài khoản trên OpenAI và không xóa auth Codex gốc trên PC. Việc hủy đăng nhập chặn kết quả đến muộn ghi đè phiên; đăng nhập thất bại giữ nguyên phiên trước đó. Trong khi có nghiên cứu chạy, máy chủ từ chối đổi/đăng xuất tài khoản để tránh xung đột.
+
+API mới (đều cần ghép nối): `GET /api/auth/status`, `POST /api/auth/device`, `GET /api/auth/device/:id`, `DELETE /api/auth/device/:id`, `POST /api/auth/logout`. Mã thiết bị chỉ được đọc/hủy từ phiên truy cập tạo nó; endpoint không nhận token do trình duyệt nhập vào. Không log mã thiết bị hoặc nội dung token.
+
+Tài liệu đối chiếu: https://learn.chatgpt.com/docs/auth (Headless/device code authentication).
