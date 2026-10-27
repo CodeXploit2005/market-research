@@ -10,3 +10,22 @@ input[type="number"] {
   -moz-appearance: textfield;
   appearance: textfield;
 }
+/* Keep deletion recognizable and avoid stretching the icon into a tall pill. */
+.row-actions { align-items: center; gap: 8px; }
+.row-actions [data-toggle] { line-height: 1.5; min-height: 32px; }
+.row-actions .delete-row-button {
+  width: 32px; height: 32px; min-width: 32px; min-height: 32px;
+  flex: 0 0 32px; padding: 0; border-radius: 8px;
+  color: var(--muted); border-color: var(--line); background: var(--surface);
+}
+.row-actions .delete-row-button svg { width: 16px; height: 16px; }
+.row-actions .delete-row-button:hover {
+  color: var(--danger); border-color: var(--danger); background: var(--soft);
+}
+@media (max-width: 700px) {
+  .row-actions [data-toggle] { min-height: 44px; font-size: 10px; padding: 10px 12px; }
+  .row-actions .delete-row-button {
+    width: 44px; height: 44px; min-width: 44px; min-height: 44px; flex-basis: 44px;
+  }
+  .row-actions .delete-row-button svg { width: 18px; height: 18px; }
+}
