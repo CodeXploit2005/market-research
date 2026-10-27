@@ -106,3 +106,19 @@ Kiểm tra dữ liệu có nguồn, tỷ giá, tách gói, trung vị, lịch s�
 - Giao diện không được nhận token ChatGPT/Codex. Token ghép nối nội bộ chỉ giữ trong sessionStorage và cookie HttpOnly phía máy chủ.
 
 Độ tin cậy báo cáo tối đa tự đánh giá là Trung bình: công cụ tìm được nguồn vẫn chưa chứng minh từng trích xuất chính xác hoặc giá còn hiệu lực. Nguồn không có ngày được gắn nhãn; không thay ngày crawl thành ngày đăng. Nguồn trên 6 tháng cần ghi nhận rõ; ngày tương lai bị loại.
+
+## Triển khai Render
+
+Bản này tự nhận môi trường Render: bind `0.0.0.0:$PORT`, chấp nhận hostname/origin HTTPS của service và yêu cầu mã ghép nối kể cả khi request đi qua proxy cục bộ.
+
+- Runtime: Node. Branch: main. Root Directory: để trống.
+- Build Command: `npm install --omit=dev`.
+- Start Command: `npm start`.
+- Health Check Path: `/api/health`.
+- `GIASAT_PAIRING_CODE`: tự đặt 12–64 ký tự chữ/số, giữ riêng, dùng để mở quyền tìm kiếm. Không đưa vào Git. Mã này không phân biệt hoa/thường.
+- `OPENAI_API_KEY`: API key của tài khoản OpenAI Platform để bật tìm kiếm trên cloud. Bản Render không tự đọc được phiên đăng nhập trên PC.
+- `OPENAI_WEBSEARCH_MODEL`: `gpt-5-mini` khi dùng API key (cũng là mặc định cho API).
+- `NODE_VERSION`: có thể pin `24.14.1`, là bản Node đã kiểm thử cục bộ.
+- `PORT`, `RENDER`, `RENDER_EXTERNAL_URL`, `RENDER_EXTERNAL_HOSTNAME`: Render tự cung cấp; không cần nhập tay.
+
+Sau khi deploy, mở URL Render, bấm Kết nối. Địa chỉ máy chủ là chính URL Render; mã ghép nối là giá trị GIASAT_PAIRING_CODE đã đặt. Không nhập API key trong giao diện. Bản Free phù hợp thử nghiệm; có thể ngủ khi không dùng và mất các job/phiên trong RAM khi restart. Báo cáo lưu trên trình duyệt vẫn còn. Dịch vụ OpenAI API có chi phí riêng dù hosting Render là Free.
