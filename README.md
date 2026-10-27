@@ -151,3 +151,6 @@ Nút Đăng xuất chỉ xóa file phiên mà GiáSát quản lý, không thu h�
 API mới (đều cần ghép nối): `GET /api/auth/status`, `POST /api/auth/device`, `GET /api/auth/device/:id`, `DELETE /api/auth/device/:id`, `POST /api/auth/logout`. Mã thiết bị chỉ được đọc/hủy từ phiên truy cập tạo nó; endpoint không nhận token do trình duyệt nhập vào. Không log mã thiết bị hoặc nội dung token.
 
 Tài liệu đối chiếu: https://learn.chatgpt.com/docs/auth (Headless/device code authentication).
+
+Nếu báo có phiên đăng nhập khác đang chờ, bấm Đăng nhập lại và xác nhận hủy phiên cũ để tạo mã mới. Chỉ người đã biết mã truy cập GiáSát mới được thực hiện; mã của phiên cũ không bị tiết lộ cho phiên mới. Phiên hết hạn tự giải phóng. Kết quả xác nhận đến muộn của mã bị hủy không được lưu.
+

@@ -37,13 +37,14 @@ const server=http.createServer(async(req,res)=>{
    const data=await body(req);if(!safeEqual(String(data.pin||'').toUpperCase(),pin)&&!(loopback&&reqOrigin===expected&&data.local===true))return send(res,401,{error:'Mã ghép nối chưa đúng.'});
    const token=randomBytes(32).toString('hex');sessions.set(token,{id:randomBytes(8).toString('hex'),exp:Date.now()+24*3600000});res.setHeader('Set-Cookie',`giasat=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400${cloud?'; Secure':''}`);return send(res,200,{token});
   }
-  if(path==='/api/health'){return send(res,200,{ok:true,name:'GiáSát Research Engine',version:'2.1.0',...(getSession(req)?await client.status():{})})}
+  if(path==='/api/health'){return send(res,200,{ok:true,name:'GiáSát Research Engine',version:'2.1.1',...(getSession(req)?await client.status():{})})}
   if(path.startsWith('/api/')){
    const session=getSession(req);if(!session)return send(res,401,{error:'Kết nối máy chủ bằng mã ghép nối trước khi nghiên cứu.'});
    if(path==='/api/auth/status'&&req.method==='GET')return send(res,200,{...await client.status(),cloud,storage:cloud?'render-filesystem':'local',login:deviceLogin.publicState(session.id)});
    if(path==='/api/auth/device'&&req.method==='POST'){
     if(active)return send(res,409,{error:'Chờ nghiên cứu đang chạy hoàn tất trước khi đổi tài khoản.'});
-    try{return send(res,200,await deviceLogin.start(session.id))}catch(e){return send(res,e.status||500,{error:e.message})}
+    const options=await body(req);
+    try{return send(res,200,await deviceLogin.start(session.id,{replace:options.replace===true}))}catch(e){return send(res,e.status||500,{error:e.message,...(e.code?{code:e.code}:{})})}
    }
    const authMatch=path.match(/^\/api\/auth\/device\/([a-f0-9-]{36})$/);
    if(authMatch){const state=deviceLogin.publicState(session.id,authMatch[1]);if(!state)return send(res,404,{error:'Phiên đăng nhập không còn hoặc thuộc phiên truy cập khác. Hãy tạo mã mới.'});if(req.method==='GET')return send(res,200,state);if(req.method==='DELETE'){deviceLogin.cancel(session.id,authMatch[1]);return send(res,200,{ok:true})}}

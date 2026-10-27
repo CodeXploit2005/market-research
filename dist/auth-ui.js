@@ -27,7 +27,15 @@ export function createChatGPTAuth({api,isConnected,getBackend,onAuthenticated,to
   if(!isConnected()){account=null;error='';render();return}
   try{account=await api('/api/auth/status');error='';if(account.login){flow=account.login;activeId=flow.id;if(['starting','pending'].includes(flow.status)){remember(activeId);pollBackend=getBackend();poll()}}else{flow=null;activeId=null;remember(null)}render()}catch(e){error=e.message;render()}
  }
- async function start(){if(starting)return;const replacing=account?.ready;if(replacing&&!await confirmAction('Đổi tài khoản tìm kiếm?','Tài khoản được dùng chung cho máy chủ này. Phiên hiện tại được giữ cho đến khi đăng nhập mới thành công.'))return;starting=true;error='';flow=null;render();try{flow=await api('/api/auth/device',{method:'POST',body:{},timeout:40000});activeId=flow.id;pollBackend=getBackend();if(['starting','pending'].includes(flow.status)){remember(activeId);render();poll()}else await finish(flow)}catch(e){error=e.message;render()}finally{starting=false;render()}}
+ async function start(){if(starting)return;const replacing=account?.ready;if(replacing&&!await confirmAction('Đổi tài khoản tìm kiếm?','Tài khoản được dùng chung cho máy chủ này. Phiên hiện tại được giữ cho đến khi đăng nhập mới thành công.'))return;starting=true;error='';flow=null;render();try{
+  try{flow=await api('/api/auth/device',{method:'POST',body:{},timeout:40000})}catch(e){
+   if(e.code!=='login_pending')throw e;
+   const approved=await confirmAction('Hủy phiên cũ và tạo mã mới?','Một tab hoặc trình duyệt trước vẫn đang chờ đăng nhập. Mã cũ sẽ bị hủy tại GiáSát; tài khoản đã đăng nhập trước đó vẫn được giữ.');
+   if(!approved)return;
+   flow=await api('/api/auth/device',{method:'POST',body:{replace:true},timeout:40000});
+  }
+  activeId=flow.id;pollBackend=getBackend();if(['starting','pending'].includes(flow.status)){remember(activeId);render();poll()}else await finish(flow)
+ }catch(e){error=e.message;render()}finally{starting=false;render()}}
  async function finish(result){flow=result;activeId=null;remember(null);if(result.status==='succeeded'){error='';await onAuthenticated();account=await api('/api/auth/status');flow=null;toast('Đã đăng nhập ChatGPT trên máy chủ GiáSát.')}else if(result.status==='error'){error=result.error||'Đăng nhập chưa hoàn tất.';flow=null}else{error='';flow=null}render()}
  async function poll(){if(polling)return;polling=true;let failures=0;try{while(activeId&&pollBackend===getBackend()){
    let state;try{state=await api('/api/auth/device/'+activeId);failures=0}catch(e){if(++failures>=3){error=e.message;render();break}await pause(2000);continue}
