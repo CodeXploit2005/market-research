@@ -5,7 +5,7 @@ export function enhanceSelects(selects) {
   const check='<svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m5 10 3 3 7-7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   function close(restore=false){if(!opened)return;const w=opened;opened=null;w.popup.hidden=true;w.trigger.setAttribute('aria-expanded','false');w.trigger.removeAttribute('aria-activedescendant');w.trigger.classList.remove('is-open');if(restore)w.trigger.focus()}
   function position(w){const rect=w.trigger.getBoundingClientRect(),margin=12,width=Math.min(Math.max(rect.width,190),window.innerWidth-margin*2);w.popup.style.width=width+'px';w.popup.style.left=Math.max(margin,Math.min(rect.left,window.innerWidth-width-margin))+'px';const spaceBelow=window.innerHeight-rect.bottom-margin,spaceAbove=rect.top-margin;w.popup.style.maxHeight=Math.max(100,Math.min(280,Math.max(spaceBelow,spaceAbove)-8))+'px';const h=w.popup.offsetHeight;w.popup.style.top=(spaceBelow>=h+8||spaceBelow>=spaceAbove?rect.bottom+8:Math.max(margin,rect.top-h-8))+'px'}
-  function highlight(w,index){w.active=(index+w.options.length)%w.options.length;w.items.forEach((item,i)=>item.classList.toggle('is-active',i===w.active));w.trigger.setAttribute('aria-activedescendant',w.items[w.active].id);w.items[w.active].scrollIntoView({block:'nearest'})}
+  function highlight(w,index){w.active=(index+w.options.length)%w.options.length;w.items.forEach((item,i)=>item.classList.toggle('is-active',i===w.active));w.trigger.setAttribute('aria-activedescendant',w.items[w.active].id);const item=w.items[w.active],top=item.offsetTop,bottom=top+item.offsetHeight;if(top<w.popup.scrollTop)w.popup.scrollTop=top;else if(bottom>w.popup.scrollTop+w.popup.clientHeight)w.popup.scrollTop=bottom-w.popup.clientHeight}
   function sync(w){const option=w.select.selectedOptions[0];w.value.textContent=option?.textContent||'';w.trigger.setAttribute('aria-label',w.label+': '+w.value.textContent);w.items.forEach((item,i)=>{const selected=w.options[i].value===w.select.value;item.classList.toggle('is-selected',selected);item.setAttribute('aria-selected',String(selected))})}
   function open(w){if(opened===w){close();return}close();sync(w);opened=w;w.popup.hidden=false;w.trigger.classList.add('is-open');w.trigger.setAttribute('aria-expanded','true');position(w);highlight(w,Math.max(0,w.select.selectedIndex))}
   function choose(w,index){w.select.value=w.options[index].value;sync(w);close(true);w.select.dispatchEvent(new Event('change',{bubbles:true}))}
@@ -27,3 +27,4 @@ export function enhanceSelects(selects) {
   document.addEventListener('scroll',e=>{if(opened&&!opened.popup.contains(e.target))close()},true);
   return ()=>widgets.forEach(sync);
 }
+
