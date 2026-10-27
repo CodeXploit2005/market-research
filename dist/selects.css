@@ -1,0 +1,16 @@
+.option-group .select-trigger{min-width:85px;min-height:36px;justify-content:space-between;gap:12px;padding:8px 10px;border:1px solid transparent;background:transparent;border-radius:8px;font-size:11px;font-weight:500;box-shadow:none;text-align:left;white-space:nowrap}
+.option-group #accountInputTrigger{min-width:115px}
+.select-trigger>svg{width:16px;height:16px;color:var(--green);transition:transform .2s;flex-shrink:0}
+.option-group .select-trigger:hover{background:var(--soft);border-color:var(--line);transform:none}
+.option-group .select-trigger.is-open{background:var(--surface);border-color:#7eb195;box-shadow:0 0 0 3px #70b38e18}
+.select-trigger.is-open>svg{transform:rotate(180deg)}
+.select-menu{position:fixed;z-index:110;padding:6px;overflow:auto;overscroll-behavior:contain;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 35px #173c301c,0 2px 7px #173c3008;animation:select-in .16s ease-out;scrollbar-width:thin;color:var(--ink)}
+.select-menu .select-option{display:flex;width:100%;align-items:center;justify-content:space-between;gap:17px;min-height:40px;border:0;border-radius:7px;padding:10px 11px;background:none;color:var(--ink);font-size:12px;font-weight:450;text-align:left;box-shadow:none;transform:none;transition:background .12s,color .12s}
+.select-option>svg{width:16px;height:16px;opacity:0;color:var(--green)}
+.select-menu .select-option.is-selected{background:var(--tint);color:var(--green);font-weight:550}
+.select-option.is-selected>svg{opacity:1}
+.select-menu .select-option.is-active:not(.is-selected){background:var(--soft)}
+.select-menu .select-option:active{background:var(--tint)}
+@keyframes select-in{from{opacity:0;translate:0 -4px}to{opacity:1;translate:0 0}}
+@media(max-width:700px){.option-group{gap:4px}.option-group .select-trigger{min-height:42px;min-width:80px;padding:9px 7px;font-size:11px;gap:8px}.option-group #accountInputTrigger{min-width:105px}.select-menu{padding:6px;border-radius:12px}.select-menu .select-option{min-height:44px;font-size:13px;padding:12px}.option-group .divider{margin:0 3px}}
+@media(prefers-reduced-motion:reduce){.select-menu{animation:none}.select-trigger>svg{transition:none}}
