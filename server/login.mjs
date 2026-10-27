@@ -1,0 +1,2 @@
+import {authenticateBrowser,authenticateDeviceCode,inferAccountId,saveAuthFile} from './vendor/auth.js';
+try{const result=process.argv.includes('--device-code')?await authenticateDeviceCode():await authenticateBrowser();saveAuthFile(result.tokens,{idToken:result.tokens.id_token,accountId:inferAccountId(result.tokens.access_token)});console.log('Đã đăng nhập. Khởi động lại GiáSát để sử dụng.')}catch(e){console.error('Đăng nhập thất bại:',e.message);process.exitCode=1}
